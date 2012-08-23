@@ -23,7 +23,7 @@ Plugin.create :kininarimasu do
   end
 
   on_boot do |service|
-	main service
+    main service
   end
 
   def search_keyword(service)
