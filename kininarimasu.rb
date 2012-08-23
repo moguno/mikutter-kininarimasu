@@ -2,7 +2,7 @@
 
 require 'date'
 
-Plugin.create :test do 
+Plugin.create :kininarimasu do 
 
   UserConfig[:interest_keyword] ||= ""
   UserConfig[:interest_japanese] ||= true
