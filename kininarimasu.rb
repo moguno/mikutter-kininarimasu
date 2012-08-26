@@ -72,7 +72,12 @@ Plugin.create :kininarimasu do
   
           msg.user[:created] ||= Time.now
 
-          timeline(:home_timeline) << [msg]
+          if defined?(timeline)
+            timeline(:home_timeline) << [msg]
+          else
+            Plugin.call(:update, service, [msg])
+          end
+
           #  p "last message :" + $result_queue.size.to_s
         end
 
