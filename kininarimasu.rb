@@ -20,7 +20,8 @@ Plugin.create :kininarimasu do
   $result_queue = []
   $last_time = nil
   $last_keyword = ""
-  
+  $queue_lock = Mutex.new()
+
 
   # 設定画面
   settings "わたし、気になります" do
@@ -38,16 +39,25 @@ Plugin.create :kininarimasu do
     input("プレフィックス", :interest_prefix)
   end 
   
-  
-  # 検索キーワード文字列の生成
-  def get_query_keyword()
+
+  # 日時文字列をパースする
+  def parse_time(str)
+    begin
+      Time.parse(str)
+    rescue
+      nil
+    end
+  end
+
+
+  # キーワードのリストを取得
+  def get_keywords()
     [:interest_keyword1, :interest_keyword2, :interest_keyword3, :interest_keyword4, :interest_keyword5]
     .select{ |key| !UserConfig[key].empty? }
     .map{ |key| UserConfig[key] }
-    .join("+OR+")
   end
-  
-  
+
+
   # 検索用ループ
   def search_loop(service)
     Reserver.new(UserConfig[:interest_period]){
@@ -61,8 +71,13 @@ Plugin.create :kininarimasu do
   def insert_loop(service)
     Reserver.new(UserConfig[:interest_insert_period]){
       begin
-        if $result_queue.size != 0 then
+        msg = nil
+
+        $queue_lock.synchronize {
           msg = $result_queue.shift
+        }
+
+        if msg != nil then
 
           msg[:created] = Time.now
   
@@ -72,13 +87,14 @@ Plugin.create :kininarimasu do
   
           msg.user[:created] ||= Time.now
 
+          # タイムラインに登録
           if defined?(timeline)
             timeline(:home_timeline) << [msg]
           else
             Plugin.call(:update, service, [msg])
           end
 
-          #  p "last message :" + $result_queue.size.to_s
+          # puts "last message :" + $result_queue.size.to_s
         end
 
         insert_loop service
@@ -90,16 +106,10 @@ Plugin.create :kininarimasu do
   end
   
 
-  # 起動時処理
-  on_boot do |service|
-    search_loop service
-    insert_loop service
-  end
-  
-  
   # 検索
   def search_keyword(service)
-    query_keyword = get_query_keyword()
+    keywords = get_keywords() 
+    query_keyword = keywords.join("+OR+")
   
     # p query_keyword
   
@@ -109,7 +119,7 @@ Plugin.create :kininarimasu do
   
     params = {}
   
-    params[:q] = query_keyword
+    params[:q] = query_keyword + "+-rt+-via"
     params[:rpp] = "100"
   
     if UserConfig[:interest_japanese] then
@@ -120,22 +130,38 @@ Plugin.create :kininarimasu do
       begin
         if $last_keyword != query_keyword then
           $last_time = nil
-          $result_queue.clear
+
+          $queue_lock.synchronize {
+            $result_queue.clear
+          }
         end
   
         $last_keyword = query_keyword
   
         res = res.select { |es|
+          result_tmp = false
+
+          tim = parse_time(es[:created_at]) 
+
           if es[:message] =~ /^RT / then
-            false
+            result_tmp = false
+          elsif $last_time == nil then
+            result_tmp = true
+          elsif tim != nil && $last_time < tim then
+            result_tmp = true
           else
-            if $last_time == nil then
-              true
-            elsif $last_time < Time.parse(es[:created_at]) then
+            result_tmp = false
+          end
+
+          # 重たい検索を行う
+          if result_tmp then
+            if keywords.inject(false) {|result, key| result | (/#{key}/i =~ es[:message])} then
               true
             else
               false
             end 
+          else
+            false
           end
         }
   
@@ -144,9 +170,9 @@ Plugin.create :kininarimasu do
         end
   
         res.each { |es| 
-          tim = Time.parse(es[:created_at])
+          tim = parse_time(es[:created_at])
   
-          if $last_time == nil || $last_time < tim then
+          if tim != nil && ($last_time == nil || $last_time < tim) then
             $last_time = tim
           end
         }
@@ -154,10 +180,19 @@ Plugin.create :kininarimasu do
         # p "new message:" + res.size.to_s
         # p "last time:" + $last_time.to_s
   
-        $result_queue.concat(res.reverse)
+        $queue_lock.synchronize {
+          $result_queue.concat(res.reverse)
+        }
       rescue => e
         puts e.backtrace
       end
     }
+  end
+
+
+  # 起動時処理
+  on_boot do |service|
+    search_loop service
+    insert_loop service
   end
 end
