@@ -21,7 +21,7 @@ class Chitanda
   # 日時文字列をパースする
   def parse_time(str)
     begin
-      Time.parse(str)
+      Time.parse(str) 
     rescue
       nil
     end
