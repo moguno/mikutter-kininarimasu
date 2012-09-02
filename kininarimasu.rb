@@ -59,6 +59,15 @@ class Chitanda
     params[:q] = query_keyword + "+-rt+-via"
     params[:rpp] = "100"
   
+    if query_keyword.empty? then
+      return
+    end
+  
+    params = {}
+  
+    params[:q] = query_keyword + "+-rt+-via"
+    params[:rpp] = "100"
+  
     if UserConfig[:interest_japanese] then
       params[:lang] = "ja"
     end
@@ -131,7 +140,12 @@ Plugin.create :kininarimasu do
   UserConfig[:interest_period] ||= 60
   UserConfig[:interest_insert_period] ||= 3
   UserConfig[:interest_prefix] ||= ""
-  
+  UserConfig[:interest_background_color] ||= [65535, 65535, 65535]
+  UserConfig[:interest_custom_style] ||= false
+  UserConfig[:interest_font_face] ||= 'Sans 10'
+  UserConfig[:interest_font_color] ||= [0, 0, 0]
+
+ 
 
   # グローバル変数の初期化
   $chitandas = []
@@ -151,13 +165,31 @@ Plugin.create :kininarimasu do
     adjustment("ポーリング間隔（秒）", :interest_period, 1, 6000)
     adjustment("混ぜ込み間隔（秒）", :interest_insert_period, 1, 600)
     input("プレフィックス", :interest_prefix)
+
+    settings "カスタムスタイル" do
+      boolean("カスタムスタイルを使う", :interest_custom_style)
+      fontcolor("フォント", :interest_font_face, :interest_font_color)
+      color("背景色", :interest_background_color)
+    end
   end 
-  
+
 
   # キーワードのリストを取得
   def get_keywords()
     [:interest_keyword1, :interest_keyword2, :interest_keyword3, :interest_keyword4, :interest_keyword5]
     .map{ |key| UserConfig[key] }
+  end
+
+
+  # カスタムスタイルを選択する
+  def choice_style(message, key, default)
+    if !UserConfig[:interest_custom_style] then
+      default
+    elsif message[:kininarimasu] then
+      UserConfig[key]
+    else
+      default
+    end
   end
 
 
@@ -191,6 +223,7 @@ Plugin.create :kininarimasu do
         if msg != nil then
 
           msg[:created] = Time.now
+          msg[:kininarimasu] = true
   
           if !UserConfig[:interest_prefix].empty? then
             msg[:message] = UserConfig[:interest_prefix] + " " + msg[:message]
@@ -247,5 +280,47 @@ Plugin.create :kininarimasu do
   on_boot do |service|
     search_loop service
     insert_loop service
+  end
+
+
+  # 背景色決定
+  filter_message_background_color do |message, color|
+    begin
+      color = choice_style(message.message, :interest_background_color, color)
+
+      [message, color]
+
+    rescue => e
+      puts e
+      puts e.backtrace
+    end
+  end
+
+
+  # フォント色決定
+  filter_message_font_color do |message, color|
+    begin
+      color = choice_style(message.message, :interest_font_color, color)
+
+      [message, color]
+
+    rescue => e
+      puts e
+      puts e.backtrace
+    end
+  end
+
+
+  # フォント決定
+  filter_message_font do |message, font|
+    begin
+      font = choice_style(message.message, :interest_font_face, font)
+
+      [message, font]
+
+    rescue => e
+      puts e
+      puts e.backtrace
+    end
   end
 end
