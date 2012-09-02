@@ -21,7 +21,7 @@ class Chitanda
   # 日時文字列をパースする
   def parse_time(str)
     begin
-      Time.parse(str) 
+      Time.parse(str)
     rescue
       nil
     end
@@ -162,8 +162,8 @@ Plugin.create :kininarimasu do
       fontcolor("フォント", :interest_font_face, :interest_font_color)
       color("背景色", :interest_background_color)
     end
-end 
-  
+  end 
+
 
   # キーワードのリストを取得
   def get_keywords()
