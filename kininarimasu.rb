@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-  
+ 
 require 'date'
 
 # 検索クラス
@@ -38,7 +38,9 @@ class Chitanda
 
     if msg != nil then
       @last_fetch_time = Time.now
-    end
+    end 
+
+    # puts @keywords.to_s + @result_queue.size.to_s
 
     return msg
   end
@@ -81,9 +83,9 @@ class Chitanda
 
           if es[:message] =~ /^RT / then
             result_tmp = false
-          elsif $last_time == nil then
+          elsif @last_result_time == nil then
             result_tmp = true
-          elsif tim != nil && $last_time < tim then
+          elsif tim != nil && @last_result_time < tim then
             result_tmp = true
           else
             result_tmp = false
@@ -117,6 +119,7 @@ class Chitanda
         # p "last time:" + $last_time.to_s
   
         @queue_lock.synchronize {
+          # puts @keywords.to_s + res.size.to_s
           @result_queue.concat(res.reverse)
         }
       rescue => e
