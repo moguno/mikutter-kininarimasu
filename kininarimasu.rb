@@ -216,14 +216,14 @@ Plugin.create :kininarimasu do
 
         if msg != nil then
 
-          msg[:created] = Time.now
+          msg[:modified] = Time.now
           msg[:kininarimasu] = true
   
           if !UserConfig[:interest_prefix].empty? then
             msg[:message] = UserConfig[:interest_prefix] + " " + msg[:message]
           end
   
-          msg.user[:created] ||= Time.now
+          msg.user[:modified] ||= Time.now
 
           # タイムラインに登録
           if defined?(timeline)
