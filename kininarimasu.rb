@@ -227,7 +227,8 @@ Plugin.create :kininarimasu do
             msg[:message] = UserConfig[:interest_prefix] + " " + msg[:message]
           end
   
-          msg.user[:modified] ||= Time.now
+          # msg.user[:created]がたまにnilになって、nilだとプロフィールが落ちるので
+          msg.user[:created] ||= Time.now
 
           # タイムラインに登録
           if defined?(timeline)
