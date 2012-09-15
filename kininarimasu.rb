@@ -93,7 +93,11 @@ class Chitanda
 
           # 重たい検索を行う
           if result_tmp then
-            if keywords.inject(false) {|result, key| result | (/#{key}/i =~ es[:message])} then
+            # ユーザ名を除外する
+            msg_tmp = es[:message].gsub(/\@[a-zA-Z0-9_]+/, "");
+
+#            if keywords.inject(false) {|result, key| result | (/#{key}/i =~ msg_tmp)} then
+            if keywords.inject(false) {|result, key| result | msg_tmp.upcase.include?(key.upcase)} then
               true
             else
               false
@@ -232,7 +236,8 @@ Plugin.create :kininarimasu do
             msg[:message] = UserConfig[:interest_prefix] + " " + msg[:message]
           end
   
-          msg.user[:modified] ||= Time.now
+          # msg.user[:created]がたまにnilになって、nilだとプロフィールが落ちるので
+          msg.user[:created] ||= Time.now
 
           # タイムラインに登録
           if defined?(timeline)
