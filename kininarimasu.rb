@@ -8,13 +8,15 @@ class Chitanda
 
 
   # コンストラクタ
-  def initialize(service, keywords)
+  def initialize(service, user_config, id)
     @service = service
-    @keywords = keywords
+    @last_keyword = ""
     @result_queue = Array.new()
     @queue_lock = Mutex.new()
     @last_result_time = nil
     @last_fetch_time = Time.now
+    @user_config = user_config
+    @id = id
   end
 
 
@@ -45,12 +47,42 @@ class Chitanda
     return msg
   end
 
+  # IDからシンボルを作る
+  def sym(base, id)
+    (base + id.to_s).to_sym
+  end
 
   # 検索する
   def search()
-    query_keyword = @keywords.join("+OR+")
+    keyword = @user_config[sym("interest_keyword", @id)]
 
-    # p query_keyword
+    # キーワードが変わったら、キャッシュを破棄する
+    if keyword != @last_keyword then
+      @queue_lock.synchronize {
+        @result_queue.clear
+        @last_result_time = nil
+      }
+
+      @last_keyword = keyword
+    end
+
+    query_keyword = keyword.strip.rstrip.sub(/ +/,"+")
+  
+    if query_keyword.empty? then
+      return
+    end
+  
+    params = {}
+
+    query_tmp = query_keyword + "+-rt+-via"
+
+    if @last_result_time != nil then
+      query_tmp = query_tmp + "+since:" + @last_result_time.strftime("%Y-%m-%d")
+    end
+  
+    params[:q] = query_tmp
+
+    params[:rpp] = "100"
   
     if query_keyword.empty? then
       return
@@ -87,8 +119,7 @@ class Chitanda
             # ユーザ名を除外する
             msg_tmp = es[:message].gsub(/\@[a-zA-Z0-9_]+/, "");
 
-#            if keywords.inject(false) {|result, key| result | (/#{key}/i =~ msg_tmp)} then
-            if keywords.inject(false) {|result, key| result | msg_tmp.upcase.include?(key.upcase)} then
+            if keyword.split(/ +/).inject(false) {|result, key| result | msg_tmp.upcase.include?(key.upcase)} then
               true
             else
               false
@@ -255,17 +286,7 @@ Plugin.create :kininarimasu do
   # 検索
   def search_keyword(service)
     begin
-      keywords = get_keywords() 
-
-      (0..keywords.length - 1).each { |i|
-        if keywords[i].empty? then
-          $chitandas[i] = nil
-        elsif ($chitandas[i] == nil) || ($chitandas[i].keywords <=> [keywords[i]]) != 0 then
-          $chitandas << Chitanda.new(service, [keywords[i]])
-        end
-      }
-
-      $chitandas.select { |a| a != nil }.each { |chitanda|
+      $chitandas.each { |chitanda|
         chitanda.search()
       }
     rescue => e
@@ -277,6 +298,10 @@ Plugin.create :kininarimasu do
 
   # 起動時処理
   on_boot do |service|
+    (0..5 - 1).each {|i|
+      $chitandas << Chitanda.new(service, UserConfig, i + 1)
+    }
+
     search_loop service
     insert_loop service
   end
