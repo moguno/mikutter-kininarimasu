@@ -2,20 +2,47 @@
  
 require 'date'
 
+
+# IDからシンボルを作る
+def sym(base, id)
+  (base + id.to_s).to_sym
+end
+
+
 # 検索クラス
 class Chitanda
-  attr_reader :last_fetch_time,:keywords
+  attr_reader :last_fetch_time
 
 
   # コンストラクタ
-  def initialize(service, keywords)
+  def initialize(service, user_config, id)
     @service = service
-    @keywords = keywords
+    @last_keyword = ""
     @result_queue = Array.new()
     @queue_lock = Mutex.new()
     @last_result_time = nil
     @last_fetch_time = Time.now
+    @user_config = user_config
+    @id = id
   end
+
+
+  # コンフィグの初期化
+  def init_user_config()
+    @user_config[sym("interest_keyword", @id)] ||= ""
+    @user_config[sym("interest_reverse", @id)] ||= false
+  end
+
+
+  # 設定画面の生成
+  def setting(plugin)
+    id = @id
+
+    plugin.settings "検索ワード" + id.to_s do
+      input("検索ワード", sym("interest_keyword", id))
+      boolean("新しいツイートを優先する", sym("interest_reverse", id))
+    end
+   end
 
 
   # 日時文字列をパースする
@@ -33,7 +60,11 @@ class Chitanda
     msg = nil
 
     @queue_lock.synchronize {
-      msg = @result_queue.shift
+      if @user_config[sym("interest_reverse", @id)] then
+        msg = @result_queue.pop
+      else
+        msg = @result_queue.shift
+      end
     }
 
     if msg != nil then
@@ -48,29 +79,41 @@ class Chitanda
 
   # 検索する
   def search()
-    query_keyword = @keywords.join("+OR+")
+    keyword = @user_config[sym("interest_keyword", @id)]
 
-    # p query_keyword
+    # キーワードが変わったら、キャッシュを破棄する
+    if keyword != @last_keyword then
+      @queue_lock.synchronize {
+        @result_queue.clear
+        @last_result_time = nil
+      }
+
+      @last_keyword = keyword
+    end
+
+    query_keyword = keyword.strip.rstrip.sub(/ +/,"+")
   
     if query_keyword.empty? then
       return
     end
   
     params = {}
+
+    query_tmp = query_keyword + "+-rt+-via"
+
+    if @last_result_time != nil then
+      query_tmp = query_tmp + "+since:" + @last_result_time.strftime("%Y-%m-%d")
+    end
   
-    params[:q] = query_keyword + "+-rt+-via"
+    params[:q] = query_tmp
+
     params[:rpp] = "100"
   
     if query_keyword.empty? then
       return
     end
   
-    params = {}
-  
-    params[:q] = query_keyword + "+-rt+-via"
-    params[:rpp] = "100"
-  
-    if UserConfig[:interest_japanese] then
+    if @user_config[:interest_japanese] then
       params[:lang] = "ja"
     end
 
@@ -96,8 +139,7 @@ class Chitanda
             # ユーザ名を除外する
             msg_tmp = es[:message].gsub(/\@[a-zA-Z0-9_]+/, "");
 
-#            if keywords.inject(false) {|result, key| result | (/#{key}/i =~ msg_tmp)} then
-            if keywords.inject(false) {|result, key| result | msg_tmp.upcase.include?(key.upcase)} then
+            if keyword.split(/ +/).inject(true) {|result, key| result & msg_tmp.upcase.include?(key.upcase)} then
               true
             else
               false
@@ -137,36 +179,15 @@ end
 
 Plugin.create :kininarimasu do 
   
-  # コンフィグの初期化
-  UserConfig[:interest_keyword1] ||= ""
-  UserConfig[:interest_keyword2] ||= ""
-  UserConfig[:interest_keyword3] ||= ""
-  UserConfig[:interest_keyword4] ||= ""
-  UserConfig[:interest_keyword5] ||= ""
-  UserConfig[:interest_japanese] ||= true
-  UserConfig[:interest_period] ||= 60
-  UserConfig[:interest_insert_period] ||= 3
-  UserConfig[:interest_prefix] ||= ""
-  UserConfig[:interest_background_color] ||= [65535, 65535, 65535]
-  UserConfig[:interest_custom_style] ||= false
-  UserConfig[:interest_font_face] ||= 'Sans 10'
-  UserConfig[:interest_font_color] ||= [0, 0, 0]
-
- 
-
   # グローバル変数の初期化
   $chitandas = []
 
 
   # 設定画面
   settings "わたし、気になります" do
-    settings "検索ワード" do
-      input("", :interest_keyword1)
-      input("", :interest_keyword2)
-      input("", :interest_keyword3)
-      input("", :interest_keyword4)
-      input("", :interest_keyword5)
-    end
+    $chitandas.each {|chitanda|
+      chitanda.setting(self)
+    }
  
     boolean("日本語のツイートのみ", :interest_japanese)
     adjustment("ポーリング間隔（秒）", :interest_period, 1, 6000)
@@ -179,13 +200,6 @@ Plugin.create :kininarimasu do
       color("背景色", :interest_background_color)
     end
   end 
-
-
-  # キーワードのリストを取得
-  def get_keywords()
-    [:interest_keyword1, :interest_keyword2, :interest_keyword3, :interest_keyword4, :interest_keyword5]
-    .map{ |key| UserConfig[key] }
-  end
 
 
   # カスタムスタイルを選択する
@@ -203,7 +217,7 @@ Plugin.create :kininarimasu do
   # 検索用ループ
   def search_loop(service)
     Reserver.new(UserConfig[:interest_period]){
-      keywords = search_keyword(service) 
+      search_keyword(service) 
       search_loop service
     } 
   end
@@ -264,17 +278,7 @@ Plugin.create :kininarimasu do
   # 検索
   def search_keyword(service)
     begin
-      keywords = get_keywords() 
-
-      (0..keywords.length - 1).each { |i|
-        if keywords[i].empty? then
-          $chitandas[i] = nil
-        elsif ($chitandas[i] == nil) || ($chitandas[i].keywords <=> [keywords[i]]) != 0 then
-          $chitandas << Chitanda.new(service, [keywords[i]])
-        end
-      }
-
-      $chitandas.select { |a| a != nil }.each { |chitanda|
+      $chitandas.each { |chitanda|
         chitanda.search()
       }
     rescue => e
@@ -286,6 +290,25 @@ Plugin.create :kininarimasu do
 
   # 起動時処理
   on_boot do |service|
+    (0..5 - 1).each {|i|
+      $chitandas << Chitanda.new(service, UserConfig, i + 1)
+    }
+
+
+    # コンフィグの初期化
+    UserConfig[:interest_japanese] ||= true
+    UserConfig[:interest_period] ||= 60
+    UserConfig[:interest_insert_period] ||= 3
+    UserConfig[:interest_prefix] ||= ""
+    UserConfig[:interest_background_color] ||= [65535, 65535, 65535]
+    UserConfig[:interest_custom_style] ||= false
+    UserConfig[:interest_font_face] ||= 'Sans 10'
+    UserConfig[:interest_font_color] ||= [0, 0, 0]
+
+    $chitandas.each {|chitanda|
+      chitanda.init_user_config
+    }
+  
     search_loop service
     insert_loop service
   end
