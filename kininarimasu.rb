@@ -17,6 +17,7 @@ class Chitanda
   # コンストラクタ
   def initialize(service, user_config, id)
     @service = service
+    @last_user_namae = false
     @last_keyword = ""
     @result_queue = Array.new()
     @queue_lock = Mutex.new()
@@ -31,6 +32,7 @@ class Chitanda
   def init_user_config()
     @user_config[sym("interest_keyword", @id)] ||= ""
     @user_config[sym("interest_reverse", @id)] ||= false
+    @user_config[sym("interest_user\name", @id)] ||= false
   end
 
 
@@ -41,7 +43,7 @@ class Chitanda
     plugin.settings "検索ワード" + id.to_s do
       input("検索ワード", sym("interest_keyword", id))
       boolean("新しいツイートを優先する", sym("interest_reverse", id))
-    end
+      boolean("ユーザ名も検索対象", sym("interest_user_name", id)) end
    end
 
 
@@ -81,14 +83,15 @@ class Chitanda
   def search()
     keyword = @user_config[sym("interest_keyword", @id)]
 
-    # キーワードが変わったら、キャッシュを破棄する
-    if keyword != @last_keyword then
+    # 検索オプションが変わったら、キャッシュを破棄する
+    if keyword != @last_keyword || @user_config[sym("interest_user_name", @id)] != @last_user_name then
       @queue_lock.synchronize {
         @result_queue.clear
         @last_result_time = nil
       }
 
       @last_keyword = keyword
+      @last_user_name = @user_config[sym("interest_user_name", @id)]
     end
 
     query_keyword = keyword.strip.rstrip.sub(/ +/,"+")
@@ -134,18 +137,21 @@ class Chitanda
             result_tmp = false
           end
 
-          # 重たい検索を行う
-          if result_tmp then
-            # ユーザ名を除外する
-            msg_tmp = es[:message].gsub(/\@[a-zA-Z0-9_]+/, "");
+          # ユーザ名を除外して検索する
+          if !@user_config[sym("interest_user_name", @id)] then
+            if result_tmp then
+              msg_tmp = es[:message].gsub(/\@[a-zA-Z0-9_]+/, "");
 
-            if keyword.split(/ +/).inject(true) {|result, key| result & msg_tmp.upcase.include?(key.upcase)} then
-              true
+              if keyword.split(/ +/).inject(true) {|result, key| result & msg_tmp.upcase.include?(key.upcase)} then
+                true
+              else
+                false
+              end 
             else
               false
-            end 
+            end
           else
-            false
+            result_tmp
           end
         }
   
