@@ -31,7 +31,8 @@ class Chitanda
   def init_user_config()
     @user_config[sym("interest_keyword", @id)] ||= ""
     @user_config[sym("interest_reverse", @id)] ||= false
-    @user_config[sym("interest_user\name", @id)] ||= false
+    @user_config[sym("interest_user_name", @id)] ||= false
+    @user_config[sym("interest_past", @id)] ||= 10
   end
 
 
@@ -42,8 +43,11 @@ class Chitanda
     plugin.settings "検索ワード" + id.to_s do
       input("検索ワード", sym("interest_keyword", id))
       boolean("新しいツイートを優先する", sym("interest_reverse", id))
-      boolean("ユーザ名も検索対象", sym("interest_user_name", id)) end
-   end
+      boolean("ユーザ名も検索対象", sym("interest_user_name", id)) 
+      adjustment("過去n件のツイートも取得", sym("interest_past", id), 1, 100)
+p sym(":interest_past", id)
+    end
+  end
 
 
   # 日時文字列をパースする
@@ -121,8 +125,11 @@ class Chitanda
   
     params[:q] = query_tmp
 
-    params[:rpp] = "100"
-  
+    params[:rpp] = @user_config[sym("interest_past", @id)].to_s
+
+p @user_config[sym("interest_past", @id)].to_s
+
+
     if query_keyword.empty? then
       return
     end
