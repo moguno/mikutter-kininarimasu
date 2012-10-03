@@ -45,7 +45,6 @@ class Chitanda
       boolean("新しいツイートを優先する", sym("interest_reverse", id))
       boolean("ユーザ名も検索対象", sym("interest_user_name", id)) 
       adjustment("過去n件のツイートも取得", sym("interest_past", id), 1, 100)
-p sym(":interest_past", id)
     end
   end
 
@@ -126,9 +125,6 @@ p sym(":interest_past", id)
     params[:q] = query_tmp
 
     params[:rpp] = @user_config[sym("interest_past", @id)].to_s
-
-p @user_config[sym("interest_past", @id)].to_s
-
 
     if query_keyword.empty? then
       return
