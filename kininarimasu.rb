@@ -17,8 +17,7 @@ class Chitanda
   # コンストラクタ
   def initialize(service, user_config, id)
     @service = service
-    @last_user_namae = false
-    @last_keyword = ""
+    @last_config = Hash.new
     @result_queue = Array.new()
     @queue_lock = Mutex.new()
     @last_result_time = nil
@@ -50,7 +49,11 @@ class Chitanda
   # 日時文字列をパースする
   def parse_time(str)
     begin
-      Time.parse(str)
+      if str.class == Time then
+        str
+      else
+        Time.parse(str)
+      end
     rescue
       nil
     end
@@ -84,14 +87,22 @@ class Chitanda
     keyword = @user_config[sym("interest_keyword", @id)]
 
     # 検索オプションが変わったら、キャッシュを破棄する
-    if keyword != @last_keyword || @user_config[sym("interest_user_name", @id)] != @last_user_name then
+    is_reload = [sym("interest_keyword", @id), sym("interest_user_name", @id)]
+      .inject(false) { |result, key|
+      result = result || (@user_config[key] != @last_config[key])
+
+      @last_config[key] = @user_config[key]
+
+      result
+    }
+
+    if is_reload then
+      p "ID:" + @id.to_s + " setting changed"
+
       @queue_lock.synchronize {
         @result_queue.clear
         @last_result_time = nil
       }
-
-      @last_keyword = keyword
-      @last_user_name = @user_config[sym("interest_user_name", @id)]
     end
 
     query_keyword = keyword.strip.rstrip.sub(/ +/,"+")
@@ -125,7 +136,15 @@ class Chitanda
         res = res.select { |es|
           result_tmp = false
 
-          tim = parse_time(es[:created_at]) 
+          if es[:created_at].class == String then
+            tim = parse_time(es[:created_at]) 
+          else
+            p "mulformed created_at:"
+            p es.class
+            p es
+
+            tim = nil
+          end
 
           if es[:message] =~ /^RT / then
             result_tmp = false
@@ -140,9 +159,17 @@ class Chitanda
           # ユーザ名を除外して検索する
           if !@user_config[sym("interest_user_name", @id)] then
             if result_tmp then
-              msg_tmp = es[:message].gsub(/\@[a-zA-Z0-9_]+/, "");
+              if es[:message].class == String then
+                msg_tmp = es[:message].gsub(/\@[a-zA-Z0-9_]+/, "");
+              else
+                p "mulformed message:"
+                p es.class
+                p es
 
-              if keyword.split(/ +/).inject(true) {|result, key| result & msg_tmp.upcase.include?(key.upcase)} then
+                msg_tmp = es[:message]
+              end
+
+              if keyword.split(/ +/).inject(true) {|result, key| result && msg_tmp.upcase.include?(key.upcase)} then
                 true
               else
                 false
