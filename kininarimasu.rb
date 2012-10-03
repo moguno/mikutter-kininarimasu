@@ -17,7 +17,7 @@ class Chitanda
   # コンストラクタ
   def initialize(service, user_config, id)
     @service = service
-    @last_keyword = ""
+    @last_config = Hash.new
     @result_queue = Array.new()
     @queue_lock = Mutex.new()
     @last_result_time = nil
@@ -31,6 +31,8 @@ class Chitanda
   def init_user_config()
     @user_config[sym("interest_keyword", @id)] ||= ""
     @user_config[sym("interest_reverse", @id)] ||= false
+    @user_config[sym("interest_user_name", @id)] ||= false
+    @user_config[sym("interest_past", @id)] ||= 10
   end
 
 
@@ -41,14 +43,20 @@ class Chitanda
     plugin.settings "検索ワード" + id.to_s do
       input("検索ワード", sym("interest_keyword", id))
       boolean("新しいツイートを優先する", sym("interest_reverse", id))
+      boolean("ユーザ名も検索対象", sym("interest_user_name", id)) 
+      adjustment("過去n件のツイートも取得", sym("interest_past", id), 1, 100)
     end
-   end
+  end
 
 
   # 日時文字列をパースする
   def parse_time(str)
     begin
-      Time.parse(str)
+      if str.class == Time then
+        str
+      else
+        Time.parse(str)
+      end
     rescue
       nil
     end
@@ -81,14 +89,23 @@ class Chitanda
   def search()
     keyword = @user_config[sym("interest_keyword", @id)]
 
-    # キーワードが変わったら、キャッシュを破棄する
-    if keyword != @last_keyword then
+    # 検索オプションが変わったら、キャッシュを破棄する
+    is_reload = [sym("interest_keyword", @id), sym("interest_user_name", @id)]
+      .inject(false) { |result, key|
+      result = result || (@user_config[key] != @last_config[key])
+
+      @last_config[key] = @user_config[key]
+
+      result
+    }
+
+    if is_reload then
+      p "ID:" + @id.to_s + " setting changed"
+
       @queue_lock.synchronize {
         @result_queue.clear
         @last_result_time = nil
       }
-
-      @last_keyword = keyword
     end
 
     query_keyword = keyword.strip.rstrip.sub(/ +/,"+")
@@ -107,8 +124,8 @@ class Chitanda
   
     params[:q] = query_tmp
 
-    params[:rpp] = "100"
-  
+    params[:rpp] = @user_config[sym("interest_past", @id)].to_s
+
     if query_keyword.empty? then
       return
     end
@@ -122,7 +139,15 @@ class Chitanda
         res = res.select { |es|
           result_tmp = false
 
-          tim = parse_time(es[:created_at]) 
+          if es[:created_at].class == String then
+            tim = parse_time(es[:created_at]) 
+          else
+            p "mulformed created_at:"
+            p es.class
+            p es
+
+            tim = nil
+          end
 
           if es[:message] =~ /^RT / then
             result_tmp = false
@@ -134,18 +159,29 @@ class Chitanda
             result_tmp = false
           end
 
-          # 重たい検索を行う
-          if result_tmp then
-            # ユーザ名を除外する
-            msg_tmp = es[:message].gsub(/\@[a-zA-Z0-9_]+/, "");
+          # ユーザ名を除外して検索する
+          if !@user_config[sym("interest_user_name", @id)] then
+            if result_tmp then
+              if es[:message].class == String then
+                msg_tmp = es[:message].gsub(/\@[a-zA-Z0-9_]+/, "");
+              else
+                p "mulformed message:"
+                p es.class
+                p es
 
-            if keyword.split(/ +/).inject(true) {|result, key| result & msg_tmp.upcase.include?(key.upcase)} then
-              true
+                msg_tmp = es[:message]
+              end
+
+              if keyword.split(/ +/).inject(true) {|result, key| result && msg_tmp.upcase.include?(key.upcase)} then
+                true
+              else
+                false
+              end 
             else
               false
-            end 
+            end
           else
-            false
+            result_tmp
           end
         }
   
