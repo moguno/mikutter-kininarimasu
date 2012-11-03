@@ -249,9 +249,7 @@ Plugin.create :kininarimasu do
 
   # カスタムスタイルを選択する
   def choice_style(message, key, default)
-    if !UserConfig[:interest_custom_style] then
-      default
-    elsif message[:kininarimasu] != nil then
+    if message[:kininarimasu] != nil && message[:kininarimasu][:interest_custom_style] then
       message[:kininarimasu][key]
     else
       default
