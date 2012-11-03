@@ -50,10 +50,10 @@ class Chitanda
 
 
   # 設定画面の生成
-  def setting(plugin)
+  def setting(plugin, prefix)
     id = @id
 
-    plugin.settings "  検索ワード" + id.to_s do
+    plugin.settings prefix + "検索ワード" + id.to_s do
       input("検索ワード", sym("interest_keyword", id))
       boolean("新しいツイートを優先する", sym("interest_reverse", id))
       boolean("ユーザ名も検索対象", sym("interest_user_name", id)) 
@@ -348,9 +348,13 @@ Plugin.create :kininarimasu do
     end 
 
     $chitandas.each {|chitanda|
-      chitanda.setting(self)
+       if chitanda.equal?($chitandas[-1]) then
+        chitanda.setting(self, "┗")
+      else
+        chitanda.setting(self, "┣")
+      end
     }
-   
+
     search_loop(service, 1, UserConfig[:interest_period])
     insert_loop(service, 1, UserConfig[:interest_insert_period])
   end
