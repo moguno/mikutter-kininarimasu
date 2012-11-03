@@ -258,17 +258,18 @@ Plugin.create :kininarimasu do
 
 
   # 検索用ループ
-  def search_loop(service)
-    Reserver.new(UserConfig[:interest_period]){
+  def search_loop(service, first_period, next_period)
+    Reserver.new(first_period){
       search_keyword(service) 
-      search_loop service
+
+      search_loop(service, next_period, next_period)
     } 
   end
   
-  
+
   # 混ぜ込みループ
-  def insert_loop(service)
-    Reserver.new(UserConfig[:interest_insert_period]){
+  def insert_loop(service, first_period, next_period)
+    Reserver.new(first_period){
       begin
 
         # 混ぜ込むべきインスタンスを取得
@@ -306,12 +307,12 @@ Plugin.create :kininarimasu do
         puts e.backtrace
 
       ensure
-        insert_loop service
+        insert_loop(service, next_period, next_period)
 
       end
     } 
   end
-  
+
 
   # 検索
   def search_keyword(service)
@@ -350,8 +351,8 @@ Plugin.create :kininarimasu do
       chitanda.setting(self)
     }
    
-    search_loop service
-    insert_loop service
+    search_loop(service, 1, UserConfig[:interest_period])
+    insert_loop(service, 1, UserConfig[:interest_insert_period])
   end
 
 
