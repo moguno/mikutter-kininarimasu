@@ -273,11 +273,9 @@ Plugin.create :kininarimasu do
       begin
 
         # 混ぜ込むべきインスタンスを取得
-        target_chitanda = $chitandas.select(){ |a| a != nil }.sort() { |a, b|
-          a.last_fetch_time <=> b.last_fetch_time
-        }.find { |chitanda|
-          !chitanda.empty?
-        }
+        target_chitanda = $chitandas.select { |a| a != nil }
+                                    .sort { |a, b| a.last_fetch_time <=> b.last_fetch_time }
+                                    .find { |chitanda| !chitanda.empty? }
 
         if target_chitanda != nil then
           msg = target_chitanda.fetch
