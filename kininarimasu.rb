@@ -258,26 +258,23 @@ Plugin.create :kininarimasu do
 
 
   # 検索用ループ
-  def search_loop(service, first_period, next_period)
-    Reserver.new(first_period){
+  def search_loop(service)
       search_keyword(service) 
 
-      search_loop(service, next_period, next_period)
+    Reserver.new(UserConfig[:interest_period]){
+      search_loop(service)
     } 
   end
   
 
   # 混ぜ込みループ
-  def insert_loop(service, first_period, next_period)
-    Reserver.new(first_period){
+  def insert_loop(service)
       begin
 
         # 混ぜ込むべきインスタンスを取得
-        target_chitanda = $chitandas.select(){ |a| a != nil }.sort() { |a, b|
-          a.last_fetch_time <=> b.last_fetch_time
-        }.find { |chitanda|
-          !chitanda.empty?
-        }
+        target_chitanda = $chitandas.select { |a| a != nil }
+                                    .sort { |a, b| a.last_fetch_time <=> b.last_fetch_time }
+                                    .find { |chitanda| !chitanda.empty? }
 
         if target_chitanda != nil then
           msg = target_chitanda.fetch
@@ -302,15 +299,14 @@ Plugin.create :kininarimasu do
           # puts "last message :" + $result_queue.size.to_s
         end
 
+        Reserver.new(UserConfig[:interest_insert_period]){
+          insert_loop(service)
+        } 
+        
       rescue => e
         puts e
         puts e.backtrace
-
-      ensure
-        insert_loop(service, next_period, next_period)
-
       end
-    } 
   end
 
 
@@ -355,8 +351,8 @@ Plugin.create :kininarimasu do
       end
     }
 
-    search_loop(service, 1, UserConfig[:interest_period])
-    insert_loop(service, 1, UserConfig[:interest_insert_period])
+    search_loop(service)
+    insert_loop(service)
   end
 
 
